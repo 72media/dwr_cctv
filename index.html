@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>แผนที่กล้อง CCTV กรมทรัพยากรน้ำ (DWR) - ประเทศไทย</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Bootstrap Icons + Font Awesome -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Sarabun', 'Kanit', sans-serif;
+            background: linear-gradient(135deg, #1a5276 0%, #2980b9 50%, #3498db 100%);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(90deg, #0d47a1, #1565c0, #1976d2);
+            color: white;
+            padding: 15px 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            position: relative;
+            z-index: 1000;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .header .subtitle {
+            font-size: 0.85rem;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .stats-bar {
+            background: rgba(255,255,255,0.95);
+            padding: 10px 20px;
+            display: flex;
+            gap: 25px;
+            align-items: center;
+            flex-wrap: wrap;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            font-size: 0.9rem;
+        }
+        .stat-item i { color: #1976d2; width: 24px; }
+        .stat-item .count { font-weight: 700; color: #0d47a1; font-size: 1.1rem; margin-left: 5px; }
+
+        #map {
+            height: calc(100vh - 130px);
+            width: 100%;
+            z-index: 1;
+        }
+
+        /* มาร์กเกอร์แบบหยดน้ำ */
+        .custom-marker {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            border: 3px solid white;
+            border-radius: 50% 50% 50% 0;
+            width: 36px;
+            height: 36px;
+            transform: rotate(-45deg);
+            box-shadow: 0 3px 10px rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .custom-marker:hover {
+            transform: rotate(-45deg) scale(1.15);
+            box-shadow: 0 5px 18px rgba(0,0,0,0.5);
+        }
+        .custom-marker i {
+            transform: rotate(45deg);
+            color: white;
+            font-size: 15px;
+        }
+        .custom-marker.active {
+            background: linear-gradient(135deg, #27ae60, #229954);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(39, 174, 96, 0.7); }
+            70% { box-shadow: 0 0 0 12px rgba(39, 174, 96, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(39, 174, 96, 0); }
+        }
+
+        /* ป๊อปอัป */
+        .leaflet-popup-content-wrapper {
+            border-radius: 16px;
+            padding: 0;
+            overflow: hidden;
+            box-shadow: 0 12px 28px rgba(0,0,0,0.3);
+        }
+        .leaflet-popup-content {
+            margin: 0;
+            width: 320px !important;
+        }
+        .popup-header {
+            background: linear-gradient(135deg, #1565c0, #1976d2);
+            color: white;
+            padding: 10px 15px;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        .popup-body { padding: 14px; }
+        .popup-info {
+            font-size: 0.85rem;
+            color: #2c3e50;
+            margin-bottom: 8px;
+            display: flex;
+            gap: 8px;
+        }
+        .popup-info i {
+            color: #1976d2;
+            width: 20px;
+            margin-top: 2px;
+        }
+        .popup-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .popup-btn {
+            flex: 1;
+            padding: 7px 10px;
+            border-radius: 30px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-align: center;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: 0.2s;
+        }
+        .btn-snapshot {
+            background: #1976d2;
+            color: white;
+            border: none;
+        }
+        .btn-snapshot:hover { background: #0d47a1; transform: translateY(-2px); color: white; }
+        .btn-video {
+            background: #d32f2f;
+            color: white;
+        }
+        .btn-video:hover { background: #b71c1c; transform: translateY(-2px); color: white; }
+
+        /* Sidebar รายการสถานี */
+        .sidebar {
+            position: fixed;
+            right: -400px;
+            top: 130px;
+            width: 380px;
+            height: calc(100vh - 130px);
+            background: white;
+            box-shadow: -5px 0 25px rgba(0,0,0,0.2);
+            transition: right 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+            z-index: 999;
+            overflow-y: auto;
+            border-radius: 20px 0 0 20px;
+        }
+        .sidebar.open { right: 0; }
+        .sidebar-header {
+            background: linear-gradient(135deg, #1565c0, #1976d2);
+            color: white;
+            padding: 15px 20px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .sidebar-header h3 { margin: 0; font-size: 1.1rem; }
+        .sidebar-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.3rem;
+            cursor: pointer;
+        }
+        .station-list { padding: 12px; }
+        .station-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            padding: 12px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .station-card:hover {
+            border-color: #1976d2;
+            background: #f0f9ff;
+            transform: translateX(-4px);
+        }
+        .station-card.active {
+            border-left: 5px solid #27ae60;
+            background: #eafaf1;
+        }
+        .station-name {
+            font-weight: 700;
+            color: #0c4e6e;
+            font-size: 0.95rem;
+        }
+        .station-code {
+            display: inline-block;
+            background: #e6f2fc;
+            color: #1976d2;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            margin: 5px 0;
+        }
+        .station-location {
+            font-size: 0.75rem;
+            color: #4b5563;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .station-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .station-actions a {
+            flex: 1;
+            text-align: center;
+            padding: 5px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-decoration: none;
+            background: #f1f5f9;
+            color: #1e293b;
+        }
+        .station-actions a:hover { background: #1976d2; color: white; }
+
+        .toggle-sidebar {
+            position: fixed;
+            right: 140px;
+            top: 140px;
+            z-index: 998;
+            background: linear-gradient(135deg, #1565c0, #1976d2);
+            color: white;
+            border: none;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: 0.2s;
+        }
+        .toggle-sidebar:hover { transform: scale(1.08); background: #0d47a1; }
+
+        /* filter bar แนวนอนฝั่งซ้าย */
+        .filter-bar {
+            position: fixed;
+            left: 50px;
+            top: 140px;
+            z-index: 998;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: calc(100vh - 180px);
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        .filter-btn {
+            background: rgba(255,255,255,0.96);
+            border: none;
+            padding: 6px 14px;
+            border-radius: 40px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+            transition: all 0.2s;
+            color: #1f2937;
+        }
+        .filter-btn i { width: 18px; }
+        .filter-btn:hover, .filter-btn.active {
+            background: #1976d2;
+            color: white;
+            border: none;
+            transform: scale(1.02);
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top:0; left:0; right:0; bottom:0;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #fff3;
+            border-top-color: #3498db;
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { color: white; font-weight: 500; }
+
+        @media (max-width: 768px) {
+            .sidebar { width: 100%; right: -100%; border-radius: 0; }
+            .filter-bar { left: 5px; top: 130px; gap: 5px; }
+            .filter-btn { padding: 4px 10px; font-size: 0.7rem; }
+        }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: #eef2f5; }
+        ::-webkit-scrollbar-thumb { background: #1976d2; border-radius: 4px; }
+    </style>
+    <base target="_blank">
+</head>
+<body>
+<div class="loading-overlay" id="loading">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">กำลังโหลดแผนที่ CCTV ทั่วประเทศ...</div>
+</div>
+
+<div class="header">
+    <h1><i class="fas fa-video"></i> แผนที่กล้อง CCTV กรมทรัพยากรน้ำ (DWR)</h1>
+    <div class="subtitle">ระบบติดตามสถานการณ์น้ำ 116 จุดทั่วไทย | อัปเดตข้อมูลล่าสุด</div>
+</div>
+
+<div class="stats-bar">
+    <div class="stat-item"><i class="fas fa-map-marker-alt"></i> สถานีทั้งหมด: <span class="count" id="totalStations">0</span></div>
+    <div class="stat-item"><i class="fas fa-eye"></i> กล้องออนไลน์: <span class="count" id="onlineStations">0</span></div>
+    <div class="stat-item"><i class="fas fa-globe-asia"></i> จังหวัด: <span class="count" id="totalProvinces">0</span></div>
+    <div class="stat-item"><i class="fas fa-clock"></i> อัพเดทล่าสุด: <span id="lastUpdate">-</span></div>
+</div>
+
+<div id="map"></div>
+
+<!-- filter bar แสดงจังหวัด -->
+<div class="filter-bar" id="filterContainer"></div>
+
+<button class="toggle-sidebar" onclick="toggleSidebar()"><i class="fas fa-list" id="toggleIcon"></i></button>
+
+<div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+        <h3><i class="fas fa-list-ul"></i> รายการกล้อง CCTV</h3>
+        <button class="sidebar-close" onclick="toggleSidebar()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="station-list" id="stationList"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<script>
+    // ================== ข้อมูลกล้องใหม่ทั้งหมด 116 จุด ==================
+    const rawCameras = [
+        {code:"TC020106",name:"โรงสูบน้ำแรงต่ำแม่ข่าย หัวฝาย",locate:"จ.เชียงราย",lat:20.443748,lng:99.874474,user:"live",pass:"Live2025!",imgUrl:"http://TC020106.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TC020107",name:"อุทกวิทยาเชียงแสน",locate:"จ.เชียงราย",lat:20.274181,lng:100.088387,user:"live",pass:"Live2025!",imgUrl:"http://TC020107.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA020510",name:"สะพานมิตรภาพแม่นาวาง-ท่าตอน",locate:"จ.เชียงใหม่",lat:20.05,lng:99.85,user:"live",pass:"Live2025!",imgUrl:"http://ta020510.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA020511",name:"สะพานพ่อขุนเม็งรายมหาราช",locate:"จ.เชียงราย",lat:19.9,lng:99.83,user:"live",pass:"Live2025!",imgUrl:"http://ta020511.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA030704",name:"แม่น้ำเลย",locate:"จ.เลย",lat:17.49505,lng:101.734138,user:"live",pass:"Live2025!",imgUrl:"http://TA030704.dyndns.info:5001/snap.jpg"},
+        {code:"TC030807",name:"วัดน้ำแม่น้ำโขง (MRC) เชียงคาน",locate:"จ.เลย",lat:17.899754,lng:101.670181,user:"live",pass:"Live2025!",imgUrl:"http://TC030807.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA030901",name:"ห้วยโสม",locate:"จ.หนองคาย",lat:17.75,lng:102.15,user:"live",pass:"Live2025!",imgUrl:"http://TA030901.dyndns.info:5001/snap.jpg"},
+        {code:"TC031106",name:"วัดศรีชมภูองค์ตื้อ",locate:"จ.หนองคาย",lat:17.876173,lng:102.575668,user:"live",pass:"Live2025!",imgUrl:"http://TC031106.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TC031203",name:"สำนักงานส่วนอุทกหนองคาย",locate:"จ.หนองคาย",lat:17.877516,lng:102.717003,user:"live",pass:"Live2025!",imgUrl:"http://TC031203.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA031322",name:"ห้วยน้ำสวย",locate:"จ.หนองคาย",lat:17.75,lng:102.72,user:"live",pass:"Live2025!",imgUrl:"http://TA031322.dyndns.info:5001/snap.jpg"},
+        {code:"TC031506",name:"บ้านท่าตูม",locate:"จ.อุดรธานี",lat:17.48222,lng:102.796822,user:"live",pass:"Live2022!",imgUrl:"http://tc031506.dyndns.info:5001/snap.jpg"},
+        {code:"TC031703",name:"สะพานห้วยหลวงอนุสรณ์",locate:"จ.หนองคาย",lat:18.018209,lng:103.074547,user:"",pass:"",imgUrl:"http://tc031703.dyndns.info:5001/snap.jpg"},
+        {code:"TC032103",name:"บ้านท่าสะอาด",locate:"จ.บึงกาฬ",lat:18.27,lng:103.07,user:"live",pass:"Live2025!",imgUrl:"http://TC032103.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TC032703",name:"บ้านตาลปากน้ำ",locate:"จ.นครพนม",lat:17.68,lng:104.25,user:"live",pass:"Live2025!",imgUrl:"http://TC032103.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TC032705",name:"สะพาน นพ.4059",locate:"จ.นครพนม",lat:17.63538,lng:104.245529,user:"",pass:"",imgUrl:"http://tc032705.dyndns.info:5001/snap.jpg"},
+        {code:"TC032706",name:"หนองสาหร่าย",locate:"จ.นครพนม",lat:17.68469,lng:104.365868,user:"",pass:"",imgUrl:"http://tc032706.dyndns.info:5001/snap.jpg"},
+        {code:"TC032905",name:"วัดน้ำอัตโนมัตินครพนม",locate:"จ.นครพนม",lat:17.425171,lng:104.773651,user:"live",pass:"Live2025!",imgUrl:"http://TC032905.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA033103",name:"ลำน้ำก่ำ",locate:"จ.นครพนม",lat:17.5,lng:104.15,user:"live",pass:"Live2025!",imgUrl:"http://TA033103.dyndns.info:5001/snap.jpg"},
+        {code:"TC033612",name:"วัดน้ำแม่น้ำโขง (MRC) โขงเจียม",locate:"จ.อุบลราชธานี",lat:15.321869,lng:105.493217,user:"live",pass:"Live2025!",imgUrl:"http://TC033612.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA040502",name:"บ้านโนนเชือก",locate:"จ.ชัยภูมิ",lat:15.5,lng:101.8,user:"live",pass:"Live2025!",imgUrl:"http://TA040502.dyndns.info:5001/snap.jpg"},
+        {code:"TA040705",name:"บ้านค่ายหมื่นแพ้ว",locate:"จ.ชัยภูมิ",lat:15.8,lng:102.02,user:"live",pass:"Live2025!",imgUrl:"http://TA040705.dyndns.info:5001/snap.jpg"},
+        {code:"TC040905",name:"สะพานท่าราชไชยศรี",locate:"จ.ขอนแก่น",lat:16.369232,lng:102.881264,user:"live",pass:"Live2025!",imgUrl:"http://TC040905.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA040905",name:"วัดป่าประชาราษฎร์",locate:"จ.ขอนแก่น",lat:16.1,lng:102.7,user:"live",pass:"Live2025!",imgUrl:"http://TA040905.dyndns.info:5001/snap.jpg"},
+        {code:"TA040906",name:"บ้านเหล่านกชุม",locate:"จ.ขอนแก่น",lat:16.369232,lng:102.881264,user:"live",pass:"Live2025!",imgUrl:"http://TA040906.dyndns.info:5001/snap.jpg"},
+        {code:"TA041803",name:"น้ำพอง",locate:"จ.ขอนแก่น",lat:16.35,lng:102.82,user:"live",pass:"Live2025!",imgUrl:"http://TA041803.dyndns.info:5001/snap.jpg"},
+        {code:"TA042403",name:"กมลาไสย",locate:"จ.กาฬสินธุ์",lat:16.03,lng:103.41,user:"live",pass:"Live2025!",imgUrl:"http://TA042403.dyndns.info:5001/snap.jpg"},
+        {code:"TA042504",name:"เสลภูมิ",locate:"จ.ร้อยเอ็ด",lat:15.65,lng:103.96,user:"live",pass:"Live2025!",imgUrl:"http://TA042504.dyndns.info:5001/snap.jpg"},
+        {code:"TA042705",name:"ยโสธร",locate:"จ.ยโสธร",lat:15.79,lng:104.14,user:"live",pass:"Live2025!",imgUrl:"http://TA042705.dyndns.info:5001/snap.jpg"},
+        {code:"TA042706",name:"สะพานบ้านแจนแลน",locate:"จ.ยโสธร",lat:15.56,lng:104.36,user:"live",pass:"Live2025!",imgUrl:"http://TA042706.dyndns.info:5001/snap.jpg"},
+        {code:"TC050607",name:"โรงเรียนเทศบาล 4",locate:"จ.นครราชสีมา",lat:14.97,lng:102.1,user:"live",pass:"Live2025!",imgUrl:"http://TC050607.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA050801",name:"บ้านสำโรง",locate:"จ.นครราชสีมา",lat:15.2,lng:102.1,user:"live",pass:"Live2025!",imgUrl:"http://TA050801.dyndns.info:5001/snap.jpg"},
+        {code:"TA051303",name:"ลำปลายมาศ",locate:"จ.บุรีรัมย์",lat:14.8,lng:102.9,user:"live",pass:"Live2025!",imgUrl:"http://TA051303.dyndns.info:5001/snap.jpg"},
+        {code:"TA052203",name:"สตึก",locate:"จ.บุรีรัมย์",lat:14.68,lng:103.1,user:"live",pass:"Live2025!",imgUrl:"http://TA052203.dyndns.info:5001/snap.jpg"},
+        {code:"TA052303",name:"ลำชีบ้านละลูน",locate:"จ.บุรีรัมย์",lat:14.65,lng:103.15,user:"live",pass:"Live2025!",imgUrl:"http://TA052303.dyndns.info:5001/snap.jpg"},
+        {code:"TA053404",name:"ราษีไศล",locate:"จ.ศรีสะเกษ",lat:15.35,lng:104.15,user:"live",pass:"Live2025!",imgUrl:"http://TA053404.dyndns.info:5001/snap.jpg"},
+        {code:"TA054502",name:"อุบลราชธานี",locate:"จ.อุบลราชธานี",lat:15.23,lng:104.86,user:"live",pass:"Live2025!",imgUrl:"http://TA054502.dyndns.info:5001/snap.jpg"},
+        {code:"TA054906",name:"แก่งสะพือ",locate:"จ.อุบลราชธานี",lat:15.25,lng:105.23,user:"live",pass:"Live2025!",imgUrl:"http://TA054906.dyndns.info:5001/snap.jpg"},
+        {code:"TA060503",name:"สะพานประชานิมิต",locate:"จ.เชียงใหม่",lat:18.9,lng:98.96,user:"live",pass:"Live2026!",imgUrl:"http://TA060503.dyndns.info:5001/snap.jpg"},
+        {code:"TC060502",name:"สะพานบ้านสบแฝก",locate:"จ.เชียงใหม่",lat:18.9,lng:98.85,user:"live",pass:"Live2025!",imgUrl:"http://TC060502.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TC060901",name:"สะพานหลวงพ่อบุญเย็น",locate:"จ.ลำพูน",lat:18.5,lng:99.0,user:"live",pass:"Live2025!",imgUrl:"http://TC060901.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA060810",name:"น้ำแม่กวงที่ลำพูน",locate:"จ.ลำพูน",lat:18.57,lng:99.02,user:"live",pass:"Live2026!",imgUrl:"http://TA060810.dyndns.info:5001/snap.jpg"},
+        {code:"TA061016",name:"น้ำแม่ขานที่บ้านท่าเดื่อ",locate:"จ.เชียงใหม่",lat:18.43,lng:98.96,user:"live",pass:"Live2026!",imgUrl:"http://TA061016.dyndns.info:5001/snap.jpg"},
+        {code:"TA061206",name:"น้ำแม่ลี้ที่ อ.ลี้",locate:"จ.ลำพูน",lat:17.92,lng:99.31,user:"live",pass:"Live2026!",imgUrl:"http://TA061206.dyndns.info:5001/snap.jpg"},
+        {code:"TA061802",name:"น้ำแม่หาดที่บ้านโป่ง",locate:"จ.เชียงใหม่",lat:17.7,lng:98.71,user:"live",pass:"Live2026!",imgUrl:"http://TA061802.dyndns.info:5001/snap.jpg"},
+        {code:"TA062202",name:"แม่น้ำปิงที่บ้านปากร้องห้วยจี้",locate:"จ.ตาก",lat:17.020185,lng:99.082787,user:"live",pass:"Live2026!",imgUrl:"http://TA062202.dyndns.info:5001/snap.jpg"},
+        {code:"TA062301",name:"ห้วยแม่ท้อที่บ้านปากร้อง",locate:"จ.ตาก",lat:16.87,lng:99.1,user:"live",pass:"Live2026!",imgUrl:"http://TA062301.dyndns.info:5001/snap.jpg"},
+        {code:"TA063006",name:"บ้านหาดเสลา",locate:"จ.นครสวรรค์",lat:15.850599,lng:100.053429,user:"live",pass:"Live2025!",imgUrl:"http://TA063006.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA063008",name:"แม่น้ำปิงที่บ้านบางแก้ว",locate:"จ.นครสวรรค์",lat:16.000744,lng:99.866905,user:"live",pass:"Live2026!",imgUrl:"http://TA063008.dyndns.info:5001/snap.jpg"},
+        {code:"TA070106",name:"แม่น้ำวังที่ อ.วังเหนือ",locate:"จ.ลำปาง",lat:19.12,lng:99.85,user:"live",pass:"Live2026!",imgUrl:"http://TA070106.dyndns.info:5001/snap.jpg"},
+        {code:"TC070301",name:"วัดเกาะวาลุการาม",locate:"จ.ลำปาง",lat:18.28,lng:99.49,user:"live",pass:"Live2025!",imgUrl:"http://TC070301.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA070301",name:"แม่น้ำวังที่บ้านแป้นโป่งชัย",locate:"จ.ลำปาง",lat:18.77,lng:99.52,user:"live",pass:"Live2026!",imgUrl:"http://TA070301.dyndns.info:5001/snap.jpg"},
+        {code:"TA070403",name:"น้ำแม่ตุ๋ยที่บ้านแค่",locate:"จ.ลำปาง",lat:18.28,lng:99.49,user:"live",pass:"Live2026!",imgUrl:"http://TA070403.dyndns.info:5001/snap.jpg"},
+        {code:"TA070502",name:"สะพานเฉลิมพระเกียรติ",locate:"จ.ลำปาง",lat:18.24,lng:99.5,user:"live",pass:"Live2026!",imgUrl:"http://TA070502.dyndns.info:5001/snap.jpg"},
+        {code:"TA070903",name:"แม่น้ำวังที่บ้านอ้อ",locate:"จ.ลำปาง",lat:18.1,lng:99.43,user:"live",pass:"Live2026!",imgUrl:"http://TA070903.dyndns.info:5001/snap.jpg"},
+        {code:"TA070906",name:"แม่น้ำวังที่เทศบาลตำบลแม่ปุ",locate:"จ.ลำปาง",lat:17.96,lng:99.12,user:"live",pass:"Live2026!",imgUrl:"http://TA070906.dyndns.info:5001/snap.jpg"},
+        {code:"TA071102",name:"แม่น้ำวังที่บ้านแม่สลิด",locate:"จ.ตาก",lat:17.02,lng:99.08,user:"live",pass:"Live2026!",imgUrl:"http://TA071102.dyndns.info:5001/snap.jpg"},
+        {code:"TA081301",name:"สะพานศรีสัชนาลัย",locate:"จ.สุโขทัย",lat:17.517248,lng:99.758476,user:"live",pass:"Live2025!",imgUrl:"http://TA081301.dyndns.info:5001/snap.jpg"},
+        {code:"TA081701",name:"สะพานพระแม่ย่า",locate:"จ.สุโขทัย",lat:17.002996,lng:99.831291,user:"live",pass:"Live2025!",imgUrl:"http://TA081701.dyndns.info:5001/snap.jpg"},
+        {code:"TA081902",name:"สะพานบ้านบางระกำ",locate:"จ.พิษณุโลก",lat:16.7619,lng:100.121101,user:"live",pass:"Live2025!",imgUrl:"http://TA081902.dyndns.info:5001/snap.jpg"},
+        {code:"TA081903",name:"สะพานบ้านโพทะเล",locate:"จ.พิจิตร",lat:16.094915,lng:100.259369,user:"live",pass:"Live2025!",imgUrl:"http://TA081903.dyndns.info:5001/snap.jpg"},
+        {code:"TA090502",name:"สะพานนครน่านพัฒนา",locate:"จ.น่าน",lat:18.794699,lng:100.791885,user:"live",pass:"Live2025!",imgUrl:"http://TA090502.dyndns.info:5001/snap.jpg"},
+        {code:"TA091501",name:"สะพานท่าเสา",locate:"จ.อุตรดิตถ์",lat:17.643988,lng:100.116493,user:"live",pass:"Live2025!",imgUrl:"http://TA091501.dyndns.info:5001/snap.jpg"},
+        {code:"TA092101",name:"สะพานสุพรรณกัลยา",locate:"จ.พิษณุโลก",lat:16.806669,lng:100.245506,user:"live",pass:"Live2025!",imgUrl:"http://TA092101.dyndns.info:5001/snap.jpg"},
+        {code:"TA092102",name:"สะพานเฉลิมพระเกียรติ 48 พรรษา",locate:"จ.พิจิตร",lat:16.515814,lng:100.308334,user:"live",pass:"Live2025!",imgUrl:"http://TA092102.dyndns.info:5001/snap.jpg"},
+        {code:"TA092305",name:"บ้านทับกฤช",locate:"จ.นครสวรรค์",lat:15.749706,lng:100.246178,user:"live",pass:"Live2025!",imgUrl:"http://ta092305.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA092306",name:"สะพานเฉลิมพระเกียรติ ร.9 72 พรรษา",locate:"จ.พิจิตร",lat:16.009562,lng:100.36895,user:"live",pass:"Live2025!",imgUrl:"http://TA092306.dyndns.info:5001/snap.jpg"},
+        {code:"TC092306",name:"วัดเกยไชยเหนือ",locate:"จ.นครสวรรค์",lat:15.86923,lng:100.264107,user:"live",pass:"Live2025!",imgUrl:"http://TC092306.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA100212",name:"สะพานเดชาติวงศ์",locate:"จ.นครสวรรค์",lat:15.689334,lng:100.123062,user:"live",pass:"Live2025!",imgUrl:"http://TA100212.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA100213",name:"บ้านเนินไผ่",locate:"จ.ชัยนาท",lat:15.4,lng:100.15,user:"live",pass:"Live2025!",imgUrl:"http://TA100213.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA100214",name:"วัดโคกจันทน์",locate:"จ.ชัยนาท",lat:15.108249,lng:100.267296,user:"live",pass:"Live2025!",imgUrl:"http://TA100214.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA100216",name:"บ้านบางปี",locate:"จ.ลพบุรี",lat:14.8,lng:100.65,user:"live",pass:"Live2025!",imgUrl:"http://TA100216.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA100217",name:"ศาลากลางอ่างทอง",locate:"จ.อ่างทอง",lat:14.59,lng:100.45,user:"live",pass:"Live2025!",imgUrl:"http://TA100217.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA100218",name:"บ้านป้อม",locate:"จ.พระนครศรีอยุธยา",lat:14.368388,lng:100.529076,user:"live",pass:"Live2025!",imgUrl:"http://TA100218.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA100219",name:"สะพานปทุมธานี 1",locate:"จ.ปทุมธานี",lat:14.0,lng:100.52,user:"live",pass:"Live2025!",imgUrl:"http://TA100219.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA100220",name:"สะพานพระพุทธยอดฟ้า",locate:"จ.กรุงเทพมหานคร",lat:13.74,lng:100.5,user:"live",pass:"Live2025!",imgUrl:"http://TA100220.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA100221",name:"ศาลากลางสมุทรปราการ",locate:"จ.สมุทรปราการ",lat:13.597841,lng:100.596199,user:"live",pass:"Live2025!",imgUrl:"http://TA100221.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA100222",name:"สะพานปรีดี-ธำรง",locate:"จ.พระนครศรีอยุธยา",lat:14.351688,lng:100.580765,user:"live",pass:"Live2025!",imgUrl:"http://TA100222.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TC100222",name:"เสนา",locate:"จ.พระนครศรีอยุธยา",lat:14.327531,lng:100.4048,user:"live",pass:"Live2025!",imgUrl:"http://TC100222.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA110307",name:"คลองท่าข้ามที่บ้านท่าข้าม",locate:"จ.นครสวรรค์",lat:15.72,lng:99.85,user:"live",pass:"Live2025!",imgUrl:"http://TA110307.dyndns.info:5001/snap.jpg"},
+        {code:"TA110403",name:"ห้วยทับเสลาที่บ้านนาไร่เดียว",locate:"จ.อุทัยธานี",lat:15.3,lng:99.9,user:"service",pass:"DWR25waad!",imgUrl:"http://ta110403.dyndns.info:5001/snap.jpg"},
+        {code:"TA110604",name:"อุทัยใหม่",locate:"จ.อุทัยธานี",lat:15.410646,lng:100.056854,user:"live",pass:"Live2025!",imgUrl:"http://TA110604.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA110608",name:"แม่น้ำตากแดดที่บ้านหนองขาลาย",locate:"จ.อุทัยธานี",lat:15.55,lng:100.08,user:"live",pass:"Live2025!",imgUrl:"http://TA110608.dyndns.info:5001/snap.jpg"},
+        {code:"TA110609",name:"แม่น้ำตากแดดที่บ้านบุญลือ",locate:"จ.อุทัยธานี",lat:15.38,lng:100.02,user:"live",pass:"Live2025!",imgUrl:"http://TA110609.dyndns.info:5001/snap.jpg"},
+        {code:"TA120302",name:"แม่น้ำป่าสักที่บ้านจางวาง",locate:"จ.เพชรบูรณ์",lat:16.650513,lng:101.213547,user:"live",pass:"Live2025!",imgUrl:"http://TA120302.dyndns.info:5001/snap.jpg"},
+        {code:"TA120304",name:"สะพานเพชบุระ3",locate:"จ.เพชรบูรณ์",lat:16.394907,lng:101.170975,user:"live",pass:"Live2025!",imgUrl:"http://TA120304.dyndns.info:5001/snap.jpg"},
+        {code:"TA120501",name:"แม่น้ำป่าสักที่บ้านหนองแหวน",locate:"จ.เพชรบูรณ์",lat:16.2,lng:101.15,user:"live",pass:"Live2025!",imgUrl:"http://TA120501.dyndns.info:5001/snap.jpg"},
+        {code:"TA120502",name:"แม่น้ำป่าสักที่บึงสามพัน",locate:"จ.เพชรบูรณ์",lat:15.8,lng:101.06,user:"live",pass:"Live2025!",imgUrl:"http://TA120502.dyndns.info:5001/snap.jpg"},
+        {code:"TA120802",name:"ลำสนธิที่บ้านท่ายาง",locate:"จ.ลพบุรี",lat:15.1,lng:101.05,user:"live",pass:"Live2025!",imgUrl:"http://TA120802.dyndns.info:5001/snap.jpg"},
+        {code:"TA121102",name:"แม่น้ำป่าสักที่ อ.แก่งคอย",locate:"จ.สระบุรี",lat:14.592644,lng:101.004074,user:"live",pass:"Live2025!",imgUrl:"http://TA121102.dyndns.info:5001/snap.jpg"},
+        {code:"TA121103",name:"แม่น้ำป่าสักที่ อ.เสาไห้",locate:"จ.สระบุรี",lat:14.45,lng:100.97,user:"live",pass:"Live2025!",imgUrl:"http://TA121103.dyndns.info:5001/snap.jpg"},
+        {code:"TA130201",name:"สะพานสาธุกิจ",locate:"จ.ชัยนาท",lat:15.0,lng:100.1,user:"live",pass:"Live2025!",imgUrl:"http://TA130201.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA130202",name:"แม่น้ำท่าจีนที่ท่าฉลอม",locate:"จ.สมุทรสาคร",lat:13.55,lng:100.27,user:"live",pass:"Live2025!",imgUrl:"http://TA130202.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA130203",name:"แม่น้ำท่าจีนที่สะพานข้ามแม่น้ำท่าจีน 3",locate:"จ.สมุทรสาคร",lat:13.55,lng:100.28,user:"live",pass:"Live2025!",imgUrl:"http://TA130203.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA130204",name:"แม่น้ำท่าจีนที่สะพานบุญรัตน์ประชานุวัฒน์",locate:"จ.นครปฐม",lat:13.723352,lng:100.215935,user:"live",pass:"Live2025!",imgUrl:"http://TA130204.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA130205",name:"แม่น้ำท่าจีนที่สะพานหลวงพ่อเปิ่น",locate:"จ.นครปฐม",lat:13.898843,lng:100.212448,user:"live",pass:"Live2025!",imgUrl:"http://TA130205.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA130206",name:"แม่น้ำท่าจีน (ทางหลวง 346)",locate:"จ.นครปฐม",lat:14.016114,lng:100.179192,user:"live",pass:"Live2025!",imgUrl:"http://TA130206.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA130207",name:"แม่น้ำท่าจีนที่สะพานวัดพระรูป",locate:"จ.สุพรรณบุรี",lat:14.5,lng:100.12,user:"live",pass:"Live2025!",imgUrl:"http://TA130207.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA130208",name:"แม่น้ำท่าจีน (ทางหลวง 3365)",locate:"จ.สุพรรณบุรี",lat:14.751535,lng:100.096008,user:"live",pass:"Live2025!",imgUrl:"http://TA130208.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA130213",name:"แม่น้ำท่าจีนที่สะพานสามง่าม-ท่าโบสถ์",locate:"จ.ชัยนาท",lat:15.060642,lng:100.009331,user:"live",pass:"Live2025!",imgUrl:"http://TA130213.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TC140101",name:"สะพานบ้านท่าเรือ",locate:"จ.กาญจนบุรี",lat:13.949748,lng:99.749687,user:"live",pass:"WSS4Bosch!",imgUrl:"http://bantharua.dyndns.info:10014/snap.jpg"},
+        {code:"TC140103",name:"สะพานธนะรัชต์",locate:"จ.ราชบุรี",lat:13.540849,lng:99.824089,user:"live",pass:"WSS4Bosch!",imgUrl:"http://thanarut.dyndns.info:10014/snap.jpg"},
+        {code:"TC140104",name:"สะพานสมเด็จพระศรีสุริเยนทร์",locate:"จ.สมุทรสงคราม",lat:13.419183,lng:99.96122,user:"live",pass:"WSS4Bosch!",imgUrl:"http://phrasrisuriyen.dyndns.info:10014/snap.jpg"},
+        {code:"TC140702",name:"สะพานบ้านหนองปรือ",locate:"จ.กาญจนบุรี",lat:14.606916,lng:99.45713,user:"live",pass:"WSS4Bosch!",imgUrl:"http://bannongprue.dyndns.org:10014/snap.jpg"},
+        {code:"TC150105",name:"บ้านเก่าเขาฉกรรจ์",locate:"จ.สระแก้ว",lat:13.667943,lng:102.07576,user:"live",pass:"Live2022!",imgUrl:"http://khaochakan.dyndns.info:10013/snap.jpg"},
+        {code:"TC150501",name:"บ้านหาดสูง",locate:"จ.ปราจีนบุรี",lat:13.970446,lng:101.636871,user:"live",pass:"Live2022!",imgUrl:"http://banhadsung.dyndns.info:5001/snap.jpg"},
+        {code:"TC150503",name:"บ้านสร้าง",locate:"จ.ปราจีนบุรี",lat:13.999521,lng:101.221077,user:"live",pass:"Live2022!",imgUrl:"http://bansang.dyndns.info:5001/snap.jpg"},
+        {code:"TC150602",name:"บ้านใหม่ (เขานางบวช)",locate:"จ.นครนายก",lat:14.245715,lng:101.274323,user:"live",pass:"Live2022!",imgUrl:"http://banmaibpk.dyndns.info:10011/snap.jpg"},
+        {code:"TC151002",name:"บ้านบางขนาก",locate:"จ.ฉะเชิงเทรา",lat:13.871282,lng:101.146416,user:"live",pass:"Live2022!",imgUrl:"http://bangkhanak.dyndns.info:5001/snap.jpg"},
+        {code:"TC151007",name:"เชิงสะพานฉะเชิงเทรา",locate:"จ.ฉะเชิงเทรา",lat:13.68879,lng:101.076805,user:"live",pass:"Live2025!",imgUrl:"http://TC151007.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA170102",name:"สะพานข้ามคลองนาเกลือ",locate:"จ.ชลบุรี",lat:12.92,lng:100.87,user:"live",pass:"Live2025!",imgUrl:"http://TA170102.dyndns.info:5001/snap.jpg"},
+        {code:"TA170203",name:"สะพานข้ามคลองใหญ่ที่ระยอง",locate:"จ.ระยอง",lat:12.68,lng:101.28,user:"live",pass:"Live2025!",imgUrl:"http://TA170203.dyndns.info:5001/snap.jpg"},
+        {code:"TA170406",name:"สะพานข้ามคลองประแสร์",locate:"จ.ระยอง",lat:12.75,lng:101.7,user:"live",pass:"Live2025!",imgUrl:"http://TA170406.dyndns.info:5001/snap.jpg"},
+        {code:"TA170706",name:"สะพานข้ามคลองจันทบุรีที่วัดกระทิง",locate:"จ.จันทบุรี",lat:12.87,lng:102.06,user:"live",pass:"Live2025!",imgUrl:"http://TA170706.dyndns.info:5001/snap.jpg"},
+        {code:"TA170707",name:"สะพานข้ามแม่น้ำจันทบุรี",locate:"จ.จันทบุรี",lat:12.614024,lng:102.113861,user:"live",pass:"Live2025!",imgUrl:"http://TA170707.dyndns.info:5001/snap.jpg"},
+        {code:"TC170709",name:"ตรงข้ามวัดจันทนาราม",locate:"จ.จันทบุรี",lat:12.614024,lng:102.113861,user:"live",pass:"Live2025!",imgUrl:"http://TC170709.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA170905",name:"สะพานข้ามคลองห้วยแร้ง",locate:"จ.ตราด",lat:12.24,lng:102.52,user:"live",pass:"Live2025!",imgUrl:"http://TA170905.dyndns.info:5001/snap.jpg"},
+        {code:"TA170906",name:"สะพานข้ามคลองเขาสมิง",locate:"จ.ตราด",lat:12.45,lng:102.55,user:"live",pass:"Live2025!",imgUrl:"http://TA170906.dyndns.info:5001/snap.jpg"},
+        {code:"TA170907",name:"สะพานข้ามแม่น้ำตราด",locate:"จ.ตราด",lat:12.24,lng:102.51,user:"live",pass:"Live2025!",imgUrl:"http://TA170907.dyndns.info:5001/snap.jpg"},
+        {code:"TA180304",name:"สะพานท่าแลงพัฒนา",locate:"จ.เพชรบุรี",lat:12.88,lng:99.87,user:"live",pass:"Live2025!",imgUrl:"http://TA180304.dyndns.info:5001/snap.jpg"},
+        {code:"TA180305",name:"สะพานวัดตำหรุ",locate:"จ.เพชรบุรี",lat:13.05,lng:99.97,user:"live",pass:"Live2025!",imgUrl:"http://TA180305.dyndns.info:5001/snap.jpg"},
+        {code:"TA180307",name:"สะพานท่าสรง",locate:"จ.เพชรบุรี",lat:13.111399,lng:99.948357,user:"live",pass:"Live2025!",imgUrl:"http://TA180307.dyndns.info:5001/snap.jpg"},
+        {code:"TA180308",name:"สะพานข้ามแม่น้ำเพชรบุรี อบต.บางครก",locate:"จ.เพชรบุรี",lat:13.22,lng:99.97,user:"live",pass:"Live2025!",imgUrl:"http://TA180308.dyndns.info:5001/snap.jpg"},
+        {code:"TC180301",name:"เทศบาลเมืองเพชรบุรี",locate:"จ.เพชรบุรี",lat:13.111399,lng:99.948357,user:"live",pass:"Live2025!",imgUrl:"http://TC180301.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA180404",name:"สะพานธรรมรัชต์",locate:"จ.ประจวบคีรีขันธ์",lat:12.39,lng:99.9,user:"live",pass:"Live2025!",imgUrl:"http://TA180404.dyndns.info:5001/snap.jpg"},
+        {code:"TA180601",name:"สะพานข้ามคลองกุย",locate:"จ.ประจวบคีรีขันธ์",lat:12.06,lng:99.86,user:"live",pass:"Live2025!",imgUrl:"http://TA180601.dyndns.info:5001/snap.jpg"},
+        {code:"TC180701",name:"สะพานบ้านหนองหญ้าปล้อง",locate:"จ.ประจวบคีรีขันธ์",lat:11.4041,lng:99.519218,user:"live",pass:"Live2022!",imgUrl:"http://sapanbannongyablog.dyndns.info:5001/snap.jpg"},
+        {code:"TA180704",name:"สะพานอุดมศักดิ์",locate:"จ.ประจวบคีรีขันธ์",lat:11.6,lng:99.44,user:"live",pass:"Live2025!",imgUrl:"http://TA180704.dyndns.info:5001/snap.jpg"},
+        {code:"TA180807",name:"สะพานบางสะพาน",locate:"จ.ประจวบคีรีขันธ์",lat:11.21,lng:99.52,user:"live",pass:"Live2025!",imgUrl:"http://TA180807.dyndns.info:5001/snap.jpg"},
+        {code:"TC180805",name:"ร.ร.อนุบาลบางสะพาน",locate:"จ.ประจวบคีรีขันธ์",lat:11.2,lng:99.52,user:"live",pass:"Live2025!",imgUrl:"http://TC180805.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TC191001",name:"สะพานข้ามแม่น้ำตาปี ตลาดฉวาง",locate:"จ.นครศรีธรรมราช",lat:8.42911,lng:99.508423,user:"live",pass:"Live2022!",imgUrl:"http://sapantaradchawang.dyndns.info:5001/snap.jpg"},
+        {code:"TC191601",name:"สภ.เมืองสุราษฎร์ธานี",locate:"จ.สุราษฎร์ธานี",lat:9.138925,lng:99.320564,user:"live",pass:"Live2025!",imgUrl:"http://TC191601.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TC191705",name:"สะพานปากน้ำสิชล",locate:"จ.นครศรีธรรมราช",lat:9.00878,lng:99.89003,user:"live",pass:"Live2022!",imgUrl:"http://sapanpaknamsichon.dyndns.info:5001/snap.jpg"},
+        {code:"TC191802",name:"สะพานบ้านโรงเหล็ก",locate:"จ.นครศรีธรรมราช",lat:8.73099,lng:99.746117,user:"live",pass:"Live2022!",imgUrl:"http://sapanronglek.dyndns.info:5001/snap.jpg"},
+        {code:"TC191911",name:"สะพานวัดท่าแพ",locate:"จ.นครศรีธรรมราช",lat:8.51459,lng:99.952744,user:"live",pass:"Live2022!",imgUrl:"http://sapanthaphae.dyndns.info:5001/snap.jpg"},
+        {code:"TC191913",name:"สะพานคีรีวง",locate:"จ.นครศรีธรรมราช",lat:8.43249,lng:99.782593,user:"live",pass:"Live2022!",imgUrl:"http://sapankiriwong.dyndns.info:5001/snap.jpg"},
+        {code:"TC191918",name:"สะพานตลาดเชียรใหญ่",locate:"จ.นครศรีธรรมราช",lat:8.1739,lng:100.149139,user:"live",pass:"Live2022!",imgUrl:"http://sapantaradchianyai.dyndns.info:5001/snap.jpg"},
+        {code:"TA200206",name:"คลองตะโหมด (ท่าเชียด)",locate:"จ.พัทลุง",lat:7.65,lng:100.1,user:"live",pass:"Live2025!",imgUrl:"http://ta200206.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA200207",name:"คลองนาท่อม",locate:"จ.พัทลุง",lat:7.62,lng:100.08,user:"live",pass:"Live2025!",imgUrl:"http://TA200207.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA200208",name:"คลองท่าแนะ",locate:"จ.พัทลุง",lat:7.55,lng:100.14,user:"live",pass:"Live2025!",imgUrl:"http://TA200208.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA200303",name:"คลองอู่ตะเภาตอนบนทุ่งลาน",locate:"จ.สงขลา",lat:6.87,lng:100.44,user:"live",pass:"Live2025!",imgUrl:"http://TA200303.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA200304",name:"คลองอู่ตะเภาตอนล่าง",locate:"จ.สงขลา",lat:7.002,lng:100.456001,user:"live",pass:"Live2025!",imgUrl:"http://TA200304.dyndns.info:5001/axis-cgi/jpg/image.cgi"},
+        {code:"TA210310",name:"บันนังสตา",locate:"จ.ยะลา",lat:5.87,lng:101.52,user:"live",pass:"Live2025!",imgUrl:"http://TA210310.dyndns.info:5001/snap.jpg"},
+        {code:"TA210311",name:"สะพานอาเส็น",locate:"จ.ยะลา",lat:6.19,lng:101.23,user:"live",pass:"Live2025!",imgUrl:"http://TA210311.dyndns.info:5001/snap.jpg"},
+        {code:"TA210312",name:"สะพานเฉลิมพระเกียรติ 72 พรรษา มหาราชินี",locate:"จ.ยะลา",lat:6.54,lng:101.28,user:"live",pass:"Live2025!",imgUrl:"http://TA210312.dyndns.info:5001/snap.jpg"},
+        {code:"TA210313",name:"สะพานข้ามแม่น้ำปัตตานีที่ยะรัง",locate:"จ.ปัตตานี",lat:6.73,lng:101.28,user:"live",pass:"Live2025!",imgUrl:"http://TA210313.dyndns.info:5001/snap.jpg"},
+        {code:"TA210505",name:"สะพานศรีสังวาลย์",locate:"จ.นราธิวาส",lat:5.96,lng:101.95,user:"live",pass:"Live2025!",imgUrl:"http://TA210505.dyndns.info:5001/snap.jpg"},
+        {code:"TA210506",name:"สะพานแม่น้ำสายบุรี",locate:"จ.นราธิวาส",lat:6.11,lng:101.82,user:"live",pass:"Live2025!",imgUrl:"http://TA210506.dyndns.info:5001/snap.jpg"},
+        {code:"TA210507",name:"4066-แม่น้ำสายบุรี",locate:"จ.ยะลา",lat:6.41,lng:101.42,user:"live",pass:"Live2025!",imgUrl:"http://TA210507.dyndns.info:5001/snap.jpg"},
+        {code:"TA210508",name:"4157-แม่น้ำสายบุรี",locate:"จ.ปัตตานี",lat:6.56,lng:101.61,user:"live",pass:"Live2025!",imgUrl:"http://TA210508.dyndns.info:5001/snap.jpg"},
+        {code:"TA210703",name:"สะพานข้ามชายแดนไทยมาเลเซีย",locate:"จ.นราธิวาส",lat:6.05,lng:102.0,user:"live",pass:"Live2025!",imgUrl:"http://TA210703.dyndns.info:5001/snap.jpg"},
+        {code:"TC220303",name:"สะพานบ่อน้ำร้อน",locate:"จ.ระนอง",lat:9.958362,lng:98.648575,user:"live",pass:"Live2023!",imgUrl:"http://bornhamron.dyndns.info:5001/snap.jpg"},
+        {code:"TC220402",name:"สะพานท่านเจ้าฟ้า",locate:"จ.พังงา",lat:8.842965,lng:98.363297,user:"live",pass:"Live2023!",imgUrl:"http://thanchaofah.dyndns.info:5001/snap.jpg"},
+        {code:"TC220509",name:"สะพานวัดนิโครธาราม",locate:"จ.พังงา",lat:8.517804,lng:98.633728,user:"live",pass:"Live2023!",imgUrl:"http://sapanwatnicrotharam.dyndns.info:5001/snap.jpg"},
+        {code:"TC220510",name:"สะพานฝ่ายท่าสามัคคี",locate:"จ.พังงา",lat:8.468023,lng:98.535217,user:"live",pass:"Live2023!",imgUrl:"http://sapanfhaithasamakkhi.dyndns.info:5001/snap.jpg"},
+        {code:"TC220512",name:"สะพานบ้านท่าคลอง",locate:"จ.กระบี่",lat:8.112268,lng:98.904503,user:"live",pass:"Live2023!",imgUrl:"http://bantakhlong.dyndns.info:5001/snap.jpg"},
+        {code:"TC220904",name:"สะพานอนุสาวรีย์พระยารัษฏานุประดิษฐ์มหิศรภักดี",locate:"จ.ตรัง",lat:7.564591,lng:99.624306,user:"live",pass:"Live2023!",imgUrl:"http://phrayaratsanupradid.dyndns.info:10013/snap.jpg"},
+        {code:"TC221203",name:"สะพานบ้านนาลาน",locate:"จ.สตูล",lat:6.625225,lng:100.061157,user:"live",pass:"Live2023!",imgUrl:"http://bannalan.dyndns.info:5001/snap.jpg"}
+    ];
+
+    // สร้าง stations พร้อมใส่ credential และ video url
+    function buildAuthUrl(baseUrl, user, pass, type = 'snapshot') {
+        if (!user && !pass) return baseUrl;
+        let url = baseUrl;
+        let parts = url.split('://');
+        if (parts.length !== 2) return url;
+        let protocol = parts[0];
+        let rest = parts[1];
+        let auth = `${user}:${pass}@`;
+        let newUrl = `${protocol}://${auth}${rest}`;
+        if (type === 'video') {
+            if (newUrl.includes('/axis-cgi/jpg/image.cgi')) {
+                newUrl = newUrl.replace('/axis-cgi/jpg/image.cgi', '/axis-cgi/mjpg/video.cgi');
+            } else if (newUrl.includes('snap.jpg')) {
+                newUrl = newUrl.replace('snap.jpg', 'fullscreen.htm?stream=2&autoresize=true');
+            } else if (newUrl.includes('/axis-cgi/jpg/')) {
+                newUrl = newUrl.replace('/axis-cgi/jpg/', '/axis-cgi/mjpg/');
+            }
+        }
+        return newUrl;
+    }
+
+    const stations = rawCameras.map(cam => {
+        let province = cam.locate.replace('จ.', '').trim();
+        let snapshotUrl = buildAuthUrl(cam.imgUrl, cam.user, cam.pass, 'snapshot');
+        let videoUrl = buildAuthUrl(cam.imgUrl, cam.user, cam.pass, 'video');
+        return {
+            stationCode: cam.code,
+            nameTh: cam.name,
+            nameEn: cam.name,
+            provinceTh: province,
+            districtTh: "-",
+            subDistrictTh: "-",
+            lat: cam.lat,
+            lng: cam.lng,
+            cctvSnapshot: snapshotUrl,
+            cctvVideo: videoUrl,
+            locateRaw: cam.locate
+        };
+    });
+
+    const uniqueProvinces = [...new Map(stations.map(s => [s.provinceTh, s.provinceTh])).values()].sort((a,b)=>a.localeCompare(b,'th'));
+    const provinceColors = {
+        'เชียงราย':'#e74c3c','เชียงใหม่':'#3498db','เลย':'#f39c12','หนองคาย':'#9b59b6','อุดรธานี':'#1abc9c',
+        'บึงกาฬ':'#e67e22','นครพนม':'#2ecc71','อุบลราชธานี':'#ff6b6b','ชัยภูมิ':'#4ecdc4','ขอนแก่น':'#45b7d1',
+        'กาฬสินธุ์':'#96ceb4','ร้อยเอ็ด':'#ffeaa7','ยโสธร':'#dfe6e9','นครราชสีมา':'#fd79a8','บุรีรัมย์':'#a29bfe',
+        'ศรีสะเกษ':'#fab1a0','ลำพูน':'#74b9ff','ตาก':'#55efc4','ลำปาง':'#ff7675','สุโขทัย':'#fdcb6e',
+        'พิษณุโลก':'#6c5ce7','พิจิตร':'#fd79a8','นครสวรรค์':'#00b894','ชัยนาท':'#e17055','อุทัยธานี':'#81ecec',
+        'เพชรบูรณ์':'#ff7675','ลพบุรี':'#a29bfe','สระบุรี':'#fdcb6e','สมุทรสาคร':'#00cec9','สุพรรณบุรี':'#e84393',
+        'นครปฐม':'#0984e3','กาญจนบุรี':'#6c5ce7','ปราจีนบุรี':'#fd79a8','ฉะเชิงเทรา':'#fdcb6e','ระยอง':'#00b894',
+        'จันทบุรี':'#e17055','ตราด':'#74b9ff','เพชรบุรี':'#ff7675','ประจวบคีรีขันธ์':'#a29bfe','นครศรีธรรมราช':'#fdcb6e',
+        'สุราษฎร์ธานี':'#00cec9','อ่างทอง':'#e84393','ปทุมธานี':'#0984e3','กรุงเทพมหานคร':'#6c5ce7','สมุทรปราการ':'#fd79a8',
+        'พระนครศรีอยุธยา':'#fdcb6e','ราชบุรี':'#00b894','สมุทรสงคราม':'#e17055','สระแก้ว':'#74b9ff','นครนายก':'#ff7675',
+        'ชลบุรี':'#a29bfe','น่าน':'#fdcb6e','อุตรดิตถ์':'#00cec9','พัทลุง':'#e67e22','สงขลา':'#1e3799','ยะลา':'#f53b57',
+        'ปัตตานี':'#ffa801','นราธิวาส':'#0abde3','ระนอง':'#3ae374','พังงา':'#18dcff','กระบี่':'#32ff7e','ตรัง':'#7efff5',
+        'สตูล':'#c56cf0'
+    };
+    stations.forEach(s=>{ if(!provinceColors[s.provinceTh]) provinceColors[s.provinceTh]='#16a085'; });
+
+    let map;
+    let markers = {};
+    let currentFilter = 'all';
+    let activeStation = null;
+
+    // กำหนด basemaps
+    const googleHybrid = L.tileLayer(
+        "https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}",
+        { maxZoom:20, subdomains:['mt0','mt1','mt2','mt3'], attribution:"Google Hybrid" }
+    );
+    const osm = L.tileLayer(
+        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        { attribution:"OpenStreetMap" }
+    );
+    const topo = L.tileLayer(
+        "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+        { maxZoom:17, attribution:"OpenTopoMap" }
+    );
+
+    function initMap() {
+        map = L.map('map').setView([13.8, 100.5], 6);
+        googleHybrid.addTo(map);  // เริ่มต้นที่ Google Hybrid
+        
+        // เพิ่ม layer control
+        L.control.layers(
+            {
+                "Google Hybrid": googleHybrid,
+                "OpenStreetMap": osm,
+                "OpenTopoMap": topo
+            },
+            {}
+        ).addTo(map);
+        
+        createMarkers();
+        createStationList();
+        buildFilterButtons();
+        updateStats();
+        setTimeout(()=> document.getElementById('loading').style.display='none', 800);
+    }
+
+    function createMarkers() {
+        stations.forEach(st => {
+            const color = provinceColors[st.provinceTh] || '#e67e22';
+            const customIcon = L.divIcon({
+                className: 'custom-marker-wrapper',
+                html: `<div class="custom-marker" id="marker-${st.stationCode}" style="background: linear-gradient(135deg, ${color}, ${color}dd);"><i class="fas fa-video"></i></div>`,
+                iconSize: [36,36],
+                iconAnchor: [18,36],
+                popupAnchor: [0,-36]
+            });
+            const marker = L.marker([st.lat, st.lng], { icon: customIcon }).addTo(map);
+            marker.bindPopup(createPopupContent(st), { maxWidth: 320 });
+            marker.on('click', () => setActiveStation(st.stationCode));
+            markers[st.stationCode] = marker;
+        });
+    }
+
+    function createPopupContent(st) {
+        const color = provinceColors[st.provinceTh] || '#1976d2';
+        return `
+            <div class="popup-header" style="background: linear-gradient(135deg, ${color}, ${color}dd);">
+                <i class="fas fa-camera"></i> ${st.nameTh}
+            </div>
+            <div class="popup-body">
+                <div class="popup-info"><i class="fas fa-barcode"></i> <span><strong>รหัส:</strong> ${st.stationCode}</span></div>
+                <div class="popup-info"><i class="fas fa-map-marker-alt"></i> <span><strong>ที่ตั้ง:</strong> ${st.locateRaw}</span></div>
+                <div class="popup-info"><i class="fas fa-globe"></i> <span>${st.lat.toFixed(4)}, ${st.lng.toFixed(4)}</span></div>
+                <div class="popup-buttons">
+                    <a href="${st.cctvSnapshot}" class="popup-btn btn-snapshot" target="_blank"><i class="fas fa-camera"></i> ภาพนิ่ง</a>
+                    <a href="${st.cctvVideo}" class="popup-btn btn-video" target="_blank"><i class="fas fa-play-circle"></i> วิดีโอสด</a>
+                </div>
+            </div>
+        `;
+    }
+
+    function createStationList() {
+        const container = document.getElementById('stationList');
+        container.innerHTML = '';
+        stations.forEach(st => {
+            const card = document.createElement('div');
+            card.className = 'station-card';
+            card.id = `card-${st.stationCode}`;
+            card.onclick = () => {
+                map.setView([st.lat, st.lng], 14);
+                markers[st.stationCode].openPopup();
+                setActiveStation(st.stationCode);
+            };
+            card.innerHTML = `
+                <div class="station-name">${st.nameTh}</div>
+                <div class="station-code">${st.stationCode}</div>
+                <div class="station-location"><i class="fas fa-location-dot"></i> ${st.locateRaw}</div>
+                <div class="station-actions">
+                    <a href="${st.cctvSnapshot}" target="_blank"><i class="fas fa-camera"></i> ภาพสด</a>
+                    <a href="${st.cctvVideo}" target="_blank"><i class="fas fa-video"></i> วีดีโอ</a>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    function setActiveStation(code) {
+        if (activeStation) {
+            document.getElementById(`marker-${activeStation}`)?.classList.remove('active');
+            document.getElementById(`card-${activeStation}`)?.classList.remove('active');
+        }
+        activeStation = code;
+        document.getElementById(`marker-${code}`)?.classList.add('active');
+        const card = document.getElementById(`card-${code}`);
+        if(card) { card.classList.add('active'); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    }
+
+    function filterStations(province) {
+        currentFilter = province;
+        document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+        const activeBtn = Array.from(document.querySelectorAll('.filter-btn')).find(btn => btn.getAttribute('data-province') === province);
+        if(activeBtn) activeBtn.classList.add('active');
+        
+        stations.forEach(st => {
+            const marker = markers[st.stationCode];
+            const card = document.getElementById(`card-${st.stationCode}`);
+            if(province === 'all' || st.provinceTh === province) {
+                if(!map.hasLayer(marker)) marker.addTo(map);
+                if(card) card.style.display = 'block';
+            } else {
+                if(map.hasLayer(marker)) map.removeLayer(marker);
+                if(card) card.style.display = 'none';
+            }
+        });
+        if(province !== 'all') {
+            const filtered = stations.filter(s => s.provinceTh === province);
+            if(filtered.length) {
+                const group = L.featureGroup(filtered.map(s => markers[s.stationCode]));
+                map.fitBounds(group.getBounds().pad(0.2));
+            }
+        } else {
+            map.setView([13.8, 100.5], 6);
+        }
+    }
+
+    function buildFilterButtons() {
+        const container = document.getElementById('filterContainer');
+        container.innerHTML = '';
+        const allBtn = document.createElement('button');
+        allBtn.className = 'filter-btn active';
+        allBtn.setAttribute('data-province', 'all');
+        allBtn.innerHTML = '<i class="fas fa-globe"></i> ทั้งหมด';
+        allBtn.onclick = () => filterStations('all');
+        container.appendChild(allBtn);
+        
+        uniqueProvinces.forEach(prov => {
+            const btn = document.createElement('button');
+            btn.className = 'filter-btn';
+            btn.setAttribute('data-province', prov);
+            btn.innerHTML = `<i class="fas fa-map-marker-alt"></i> ${prov}`;
+            btn.onclick = () => filterStations(prov);
+            container.appendChild(btn);
+        });
+    }
+
+    function updateStats() {
+        const provincesSet = new Set(stations.map(s=>s.provinceTh));
+        document.getElementById('totalStations').innerText = stations.length;
+        document.getElementById('onlineStations').innerText = stations.length;
+        document.getElementById('totalProvinces').innerText = provincesSet.size;
+        document.getElementById('lastUpdate').innerText = new Date().toLocaleString('th-TH');
+    }
+
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const icon = document.getElementById('toggleIcon');
+        sidebar.classList.toggle('open');
+        icon.classList.toggle('fa-list');
+        icon.classList.toggle('fa-times');
+    }
+
+    window.filterStations = filterStations;
+    window.toggleSidebar = toggleSidebar;
+    document.addEventListener('DOMContentLoaded', initMap);
+</script>
+</body>
+</html>
